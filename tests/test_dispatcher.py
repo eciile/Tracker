@@ -15,7 +15,7 @@ class TestToolDispatcher(unittest.TestCase):
         self.dispatcher = ToolDispatcher(self.tools)
         (self.root / "app.py").write_text("", encoding="utf-8")
         (self.root / "src").mkdir()
-        (self.root / "src" / "auth.py").write_text("", encoding="utf-8")
+        (self.root / "src" / "auth.py").write_text("def login():\n    return True\n", encoding="utf-8")
 
     def tearDown(self):
         self.temporary_directory.cleanup()
@@ -64,6 +64,62 @@ class TestToolDispatcher(unittest.TestCase):
         )
         with self.assertRaises(DispatchError):
             self.dispatcher.execute(call)
+
+    def test_read_file(self):
+        call = ToolCall(
+            id="call-6",
+            name="read_file",
+            arguments={"relative_path": "src/auth.py", "start": 1, "end": 2},            
+        )
+
+        result=self.dispatcher.execute(call)
+        self.assertEqual(result,"1: def login():\n2:     return True"
+        )
+
+    def test_read_file_relative_path_missing(self):
+        call = ToolCall(
+            id="call-7",
+            name="read_file",
+            arguments={},            
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+  
+    def test_read_file_unknows_argument(self):
+        call = ToolCall(
+            id="call-8",
+            name="read_file",
+            arguments={"relative_path": "src/auth.py", "start": 1, "unknown": 2},            
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+
+    def test_read_file_type_relative_path(self):
+        call = ToolCall(
+            id="call-9",
+            name="read_file",
+            arguments={"relative_path": 0, "start": 1, "end": 2},            
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)  
+
+    def test_read_file_string_start(self):
+        call = ToolCall(
+            id="call-9",
+            name="read_file",
+            arguments={"relative_path": "src/auth.py", "start": "1", "end": 2},            
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)  
+
+    def test_read_file_bool_end(self):
+        call = ToolCall(
+            id="call-9",
+            name="read_file",
+            arguments={"relative_path": "src/auth.py", "start": 1, "end": True},            
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)  
 
     def test_allowed_but_unimplemented_tool_is_rejected(self):
         call = ToolCall(
