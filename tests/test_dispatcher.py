@@ -13,7 +13,10 @@ class TestToolDispatcher(unittest.TestCase):
         self.root = Path(self.temporary_directory.name)
         self.tools = RepositoryTools(self.root)
         self.dispatcher = ToolDispatcher(self.tools)
-        (self.root / "app.py").write_text("", encoding="utf-8")
+        (self.root / "app.py").write_text(
+            "def login_app():\n    pass\n",
+            encoding="utf-8",
+        )
         (self.root / "src").mkdir()
         (self.root / "src" / "auth.py").write_text("def login():\n    return True\n", encoding="utf-8")
 
@@ -121,21 +124,79 @@ class TestToolDispatcher(unittest.TestCase):
         with self.assertRaises(DispatchError):
             self.dispatcher.execute(call)  
 
-    def test_allowed_but_unimplemented_tool_is_rejected(self):
+    def test_search_code_returns_json_compatible_matches(self):
         call = ToolCall(
-            id="call-6",
+            id="call-10",
             name="search_code",
             arguments={"query": "login"},
         )
-        with self.assertRaisesRegex(DispatchError, "not implemented yet"):
+        result = self.dispatcher.execute(call)
+        self.assertEqual(
+            result,
+            [
+                {"path": "app.py", "line": 1, "text": "def login_app():"},
+                {"path": "src/auth.py", "line": 1, "text": "def login():"},
+            ],
+        )
+
+    def test_search_code_respects_limit(self):
+        call = ToolCall(
+            id="call-11",
+            name="search_code",
+            arguments={"query": "login", "limit": 1},
+        )
+        result = self.dispatcher.execute(call)
+        self.assertEqual(
+            result,
+            [{"path": "app.py", "line": 1, "text": "def login_app():"}],
+        )
+
+    def test_search_code_requires_query(self):
+        call = ToolCall(id="call-12", name="search_code", arguments={})
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+
+    def test_search_code_rejects_unknown_argument(self):
+        call = ToolCall(
+            id="call-13",
+            name="search_code",
+            arguments={"query": "login", "shell": "whoami"},
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+
+    def test_search_code_rejects_non_string_query(self):
+        call = ToolCall(
+            id="call-14",
+            name="search_code",
+            arguments={"query": 42},
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+
+    def test_search_code_rejects_string_limit(self):
+        call = ToolCall(
+            id="call-15",
+            name="search_code",
+            arguments={"query": "login", "limit": "1"},
+        )
+        with self.assertRaises(DispatchError):
+            self.dispatcher.execute(call)
+
+    def test_search_code_rejects_boolean_limit(self):
+        call = ToolCall(
+            id="call-16",
+            name="search_code",
+            arguments={"query": "login", "limit": True},
+        )
+        with self.assertRaises(DispatchError):
             self.dispatcher.execute(call)
 
     def test_execute_disallowed_tool(self):
         call = ToolCall(
-            id="call-7",
+            id="call-17",
             name="delete_file",
             arguments={},
         )
         with self.assertRaises(DispatchError):
             self.dispatcher.execute(call)
-

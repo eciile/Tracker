@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Any
 from .protocol import ToolCall
 from .tools import RepositoryTools
@@ -19,8 +20,6 @@ class ToolDispatcher:
     def execute(self, call: ToolCall) -> Any:
         if call.name not in self.ALLOWED_TOOLS:
             raise DispatchError(f"Tool '{call.name}' is not allowed.")
-        if call.name in self.ALLOWED_TOOLS and call.name != "list_files" and call.name != "read_file":
-            raise DispatchError(f"Tool '{call.name}' is not implemented yet.")
         
         if call.name == "list_files":
             allowed_arguments = {"relative_path", "limit"}
@@ -62,5 +61,25 @@ class ToolDispatcher:
                 start=start,
                 end=end,
             )
-    
-    
+
+        if call.name == "search_code":
+            allowed_arguments = {"query", "limit"}
+            unknown_arguments = set(call.arguments) - allowed_arguments
+            if "query" not in call.arguments:
+                raise DispatchError("'query' is required")
+            query = call.arguments.get("query")
+            limit = call.arguments.get("limit", 50)
+
+            if unknown_arguments:
+                raise DispatchError("search_code only accepts 'query' and 'limit' arguments.")
+            if not isinstance(query, str):
+                raise DispatchError("'query' must be a string.")
+            if not isinstance(limit, int) or isinstance(limit, bool):
+                raise DispatchError("'limit' must be an integer.")
+
+
+            matches = self.tools.search_code(
+                query=query,
+                limit=limit,
+            )
+            return [asdict(match) for match in matches]
