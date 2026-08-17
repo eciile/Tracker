@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Dict
+from dataclasses import dataclass, asdict
+from typing import Any, Dict, Optional
 import json
 
 
@@ -33,3 +33,18 @@ class ToolCall:
             raise ProtocolError("Invalid JSON: 'arguments' must be a dictionary.")
 
         return cls(**data)
+
+@dataclass(frozen=True)
+class ToolResult:
+    tool_call_id: str
+    ok: bool
+    output: Any = None
+    error: Optional[str] = None
+
+    def to_json(self) -> str:
+        data = asdict(self)
+        payload = json.dumps(data, ensure_ascii=False, sort_keys=True)
+        return payload
+
+        
+        
