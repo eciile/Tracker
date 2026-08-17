@@ -1,7 +1,7 @@
 from dataclasses import asdict
 from typing import Any
-from .protocol import ToolCall
-from .tools import RepositoryTools
+from .protocol import ToolCall, ToolResult
+from .tools import RepositoryTools, ToolError
 
 class DispatchError(ValueError):
     """Raised when a tool call cannot be safely dispatched."""
@@ -83,3 +83,18 @@ class ToolDispatcher:
                 limit=limit,
             )
             return [asdict(match) for match in matches]
+
+    def execute_result(self,call: ToolCall) -> ToolResult:
+        try:
+            output = self.execute(call)
+            return ToolResult(
+                tool_call_id=call.id,
+                ok=True,
+                output=output,
+            )
+        except (DispatchError, ToolError) as exc:
+            return ToolResult(
+                tool_call_id=call.id,
+                ok=False,
+                error=str(exc),
+            )

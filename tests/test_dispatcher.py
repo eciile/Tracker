@@ -200,3 +200,39 @@ class TestToolDispatcher(unittest.TestCase):
         )
         with self.assertRaises(DispatchError):
             self.dispatcher.execute(call)
+
+    def test_execute_result_success(self):
+        call = ToolCall(
+            id="call-18",
+            name="list_files",
+            arguments={},
+        )
+        result = self.dispatcher.execute_result(call)
+        self.assertEqual (result.tool_call_id, "call-18")
+        self.assertTrue (result.ok)
+        self.assertEqual (result.output, ["app.py", "src/auth.py"])
+        self.assertIsNone(result.error)
+
+    def test_execute_result_fail(self):
+        call = ToolCall(
+            id="call-19",
+            name="delete_file",
+            arguments={},
+        )
+        result = self.dispatcher.execute_result(call)
+        self.assertEqual (result.tool_call_id, "call-19")
+        self.assertFalse (result.ok)
+        self.assertIsNone (result.output)
+        self.assertIn("not allowed", result.error)
+
+    def test_execute_result_tool_fail(self):
+        call = ToolCall(
+            id="call-20",
+            name="read_file",
+            arguments={"relative_path": "missing.py"},
+        )
+        result = self.dispatcher.execute_result(call)
+        self.assertEqual (result.tool_call_id, "call-20")
+        self.assertFalse (result.ok)
+        self.assertIsNone (result.output)
+        self.assertIn("not a file", result.error)
