@@ -47,12 +47,15 @@ class TrackerAgentTests(unittest.TestCase):
         )
         agent = TrackerAgent(client, self.dispatcher)
 
-        answer = agent.run("Where is login implemented?")
+        result = agent.run("Where is login implemented?")
 
         self.assertEqual(
-            answer,
+            result.answer,
             "Login is implemented in src/auth.py on line 1.",
         )
+        self.assertEqual(result.evidence[0].path, "src/auth.py")
+        self.assertEqual(result.evidence[0].start_line, 1)
+        self.assertEqual(result.evidence[0].end_line, 1)
         self.assertEqual(len(client.received_messages), 3)
         second_request = client.received_messages[1]
         self.assertEqual(second_request[-1]["role"], "tool")
@@ -84,9 +87,9 @@ class TrackerAgentTests(unittest.TestCase):
         )
         agent = TrackerAgent(client, self.dispatcher, max_steps=4)
 
-        answer = agent.run("Where is login defined?")
+        result = agent.run("Where is login defined?")
 
-        self.assertEqual(answer, "Login is in src/auth.py.")
+        self.assertEqual(result.answer, "Login is in src/auth.py.")
         self.assertEqual(len(client.received_messages), 4)
 
         correction_request = client.received_messages[1]
@@ -127,10 +130,10 @@ class TrackerAgentTests(unittest.TestCase):
             max_steps=4,
         )
 
-        answer = agent.run("Where is login defined?")
+        result = agent.run("Where is login defined?")
 
         self.assertEqual(
-            answer,
+            result.answer,
             "Login is defined in src/auth.py.",
         )
         self.assertEqual(len(client.received_messages), 4)
@@ -160,9 +163,9 @@ class TrackerAgentTests(unittest.TestCase):
         )
         agent = TrackerAgent(client, self.dispatcher, max_steps=4)
 
-        answer = agent.run("Where is login defined?")
+        result = agent.run("Where is login defined?")
 
-        self.assertEqual(answer, "Login is in src/auth.py.")
+        self.assertEqual(result.answer, "Login is in src/auth.py.")
         self.assertEqual(len(client.received_messages), 4)
         self.assertIn(
             "evidence",
@@ -188,9 +191,9 @@ class TrackerAgentTests(unittest.TestCase):
         )
         agent = TrackerAgent(client, self.dispatcher, max_steps=5)
 
-        answer = agent.run("Explain what login does.")
+        result = agent.run("Explain what login does.")
 
-        self.assertEqual(answer, "Login returns True.")
+        self.assertEqual(result.answer, "Login returns True.")
         self.assertEqual(len(client.received_messages), 5)
 
     def test_gives_correction_after_failed_tool_call(self):
@@ -211,9 +214,9 @@ class TrackerAgentTests(unittest.TestCase):
         )
         agent = TrackerAgent(client, self.dispatcher, max_steps=4)
 
-        answer = agent.run("Explain what login does.")
+        result = agent.run("Explain what login does.")
 
-        self.assertEqual(answer, "Login returns True.")
+        self.assertEqual(result.answer, "Login returns True.")
 
         correction_request = client.received_messages[2]
         self.assertEqual(correction_request[-1]["role"], "user")
@@ -225,6 +228,31 @@ class TrackerAgentTests(unittest.TestCase):
             "start and end",
             correction_request[-1]["content"].lower(),
         )
+
+    def test_protocol_correction_mentions_available_read_range(self):
+        client = FakeModelClient(
+            [
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
+                '"arguments":{"query":"login"}}',
+                '{"type":"tool_call","id":"call-2","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py","start":1,"end":2}}',
+                '{"type":"final","answer":"Login is here.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":2,"end_line":1}]}',
+                '{"type":"final","answer":"Login returns True.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":2}]}',
+            ]
+        )
+        agent = TrackerAgent(client, self.dispatcher, max_steps=4)
+
+        result = agent.run("Explain login.")
+
+        self.assertEqual(result.answer, "Login returns True.")
+
+        correction = client.received_messages[3][-1]["content"]
+        self.assertIn("src/auth.py", correction)
+        self.assertIn("line 1 through line 2", correction)
 
 if __name__ == "__main__":
     unittest.main()

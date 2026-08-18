@@ -64,7 +64,7 @@ class TrackerAgent:
         self.max_steps = max_steps
         self.trace = trace
 
-    def run(self, issue: str) -> str:
+    def run(self, issue: str) -> FinalAnswer:
         messages = [
             {
                 "role": "system",
@@ -86,7 +86,19 @@ class TrackerAgent:
             except ProtocolError as exc:
                 if self.trace is not None:
                     self.trace(f"REJECTED: Invalid model response: {exc}")
+                read_hint = ""
 
+                if successful_reads:
+                    path, read_start, read_end = successful_reads[-1]
+                    suggested_end = min(read_end, read_start + 24)
+
+                    read_hint = (
+                        f" You successfully read {path} from line {read_start} "
+                        f"through line {read_end}. Use evidence contained within "
+                        f"that range, with start_line not greater than end_line. "
+                        f"A valid range would be start_line {read_start} and "
+                        f"end_line {suggested_end}."
+                    )
                 messages.append(
                     {
                         "role": "assistant",
@@ -101,6 +113,8 @@ class TrackerAgent:
                             "Return exactly one valid JSON object matching either the "
                             "tool_call or final response schema. Do not include Markdown "
                             "or additional text."
+                            f"{read_hint}"
+
                         ),
                     }
                 )
@@ -124,7 +138,7 @@ class TrackerAgent:
                             unsupported_evidence.append(citation)
 
                     if model_response.evidence and not unsupported_evidence:
-                        return model_response.answer
+                        return model_response
 
                     if self.trace is not None:
                         self.trace(

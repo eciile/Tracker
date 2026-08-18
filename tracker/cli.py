@@ -74,7 +74,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 max_steps=args.max_steps,
                 trace=print if args.verbose else None,
             )
-            print(agent.run(args.issue))
+            result = agent.run(args.issue)
+            print(result.answer)
         return 0
     
     except (ToolError, AgentError) as exc:
