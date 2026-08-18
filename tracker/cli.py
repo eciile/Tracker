@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5,
     )
+    investigate_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show model responses and tool results",
+    )
     return parser
 
 
@@ -60,12 +65,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif args.command == "read":
             print(tools.read_file(args.path, args.start, args.end))
         elif args.command == "investigate":
+
             client = OllamaModelClient(model=args.model)
             dispatcher = ToolDispatcher(tools)
             agent = TrackerAgent(
                 client=client,
                 dispatcher=dispatcher,
                 max_steps=args.max_steps,
+                trace=print if args.verbose else None,
             )
             print(agent.run(args.issue))
         return 0

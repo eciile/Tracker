@@ -40,6 +40,20 @@ class RepositoryToolsTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.tools.read_file(".env")
 
+    def test_search_ranks_definitions_before_references(self):
+        (self.root / "src" / "usage.py").write_text(
+            "from model import Target\n",
+            encoding="utf-8",
+        )
+        (self.root / "src" / "model.py").write_text(
+            "class Target:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        matches = self.tools.search_code("Target")
+
+        self.assertEqual(matches[0].path, "src/model.py")
+        self.assertEqual(matches[0].text, "class Target:")
 
 if __name__ == "__main__":
     unittest.main()

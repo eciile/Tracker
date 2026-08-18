@@ -83,7 +83,8 @@ class RepositoryTools:
         if not 1 <= limit <= 200:
             raise ToolError("limit must be between 1 and 200")
 
-        matches: List[SearchMatch] = []
+        definition_matches: List[SearchMatch] = []
+        other_matches: List[SearchMatch] = []
         for relative_path in self.list_files(limit=500):
             path = self._resolve(relative_path)
             if path.stat().st_size > self.max_file_bytes:
@@ -94,8 +95,25 @@ class RepositoryTools:
                 continue
             for line_number, text in enumerate(lines, start=1):
                 if query.casefold() in text.casefold():
-                    matches.append(SearchMatch(relative_path, line_number, text.strip()))
-                    if len(matches) >= limit:
-                        return matches
-        return matches
+                    match = SearchMatch(
+                        relative_path,
+                        line_number,
+                        text.strip(),
+                    )
+
+                    normalized_text = text.strip().casefold()
+                    normalized_query = query.strip().casefold()
+
+                    definition_prefixes = (
+                        f"class {normalized_query}",
+                        f"def {normalized_query}",
+                        f"async def {normalized_query}",
+                    )
+
+                    if normalized_text.startswith(definition_prefixes):
+                        definition_matches.append(match)
+                    else:
+                        other_matches.append(match)
+        ranked_matches = definition_matches + other_matches
+        return ranked_matches[:limit]
 
