@@ -83,12 +83,27 @@ class TestModelResponse(unittest.TestCase):
         self.assertEqual(response.name, "search_code")
 
     def test_parses_typed_final_answer(self):
-        response = parse_model_response(
-            '{"type":"final","answer":"Found in tracker/protocol.py."}'
+        payload = json.dumps(
+            {
+                "type": "final",
+                "answer": "ToolCall validates tool requests.",
+                "evidence": [
+                    {
+                        "path": "tracker/protocol.py",
+                        "start_line": 24,
+                        "end_line": 33,
+                    }
+                ],
+            }
         )
 
+        response = parse_model_response(payload)
+
         self.assertIsInstance(response, FinalAnswer)
-        self.assertEqual(response.answer, "Found in tracker/protocol.py.")
+        self.assertEqual(response.answer, "ToolCall validates tool requests.")
+        self.assertEqual(response.evidence[0].path, "tracker/protocol.py")
+        self.assertEqual(response.evidence[0].start_line, 24)
+        self.assertEqual(response.evidence[0].end_line, 33)
 
     def test_rejects_mixed_json_and_prose(self):
         payload = (
@@ -98,3 +113,54 @@ class TestModelResponse(unittest.TestCase):
 
         with self.assertRaises(ProtocolError):
             parse_model_response(payload)
+
+    def test_rejects_evidence_that_is_not_a_list(self):
+        payload = json.dumps(
+            {
+                "type": "final",
+                "answer": "Found it.",
+                "evidence": "not a list",
+            }
+        )
+
+        with self.assertRaises(ProtocolError):
+            parse_model_response(payload)
+
+    def test_rejects_evidence_with_missing_fields(self):
+        payload = json.dumps(
+            {
+                "type": "final",
+                "answer": "Found it.",
+                "evidence": [
+                    {
+                        "path": "tracker/protocol.py",
+                    }
+                ],
+            }
+        )
+
+        with self.assertRaises(ProtocolError):
+            parse_model_response(payload)
+
+    def test_rejects_invalid_evidence_values(self):
+        invalid_items = [
+            {"path": "", "start_line": 1, "end_line": 2},
+            {"path": 123, "start_line": 1, "end_line": 2},
+            {"path": "tracker/protocol.py", "start_line": "1", "end_line": 2},
+            {"path": "tracker/protocol.py", "start_line": True, "end_line": 2},
+            {"path": "tracker/protocol.py", "start_line": 0, "end_line": 2},
+            {"path": "tracker/protocol.py", "start_line": 5, "end_line": 2},
+        ]
+
+        for item in invalid_items:
+            with self.subTest(item=item):
+                payload = json.dumps(
+                    {
+                        "type": "final",
+                        "answer": "Found it.",
+                        "evidence": [item],
+                    }
+                )
+
+                with self.assertRaises(ProtocolError):
+                    parse_model_response(payload)

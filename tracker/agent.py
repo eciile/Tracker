@@ -27,13 +27,19 @@ Investigation requirements:
     3. Do not return a final answer until both search_code and read_file have
     succeeded.
     4. Cite the relevant file path and line numbers in the final answer.
-    
+
 - When reading a definition, read enough lines to include the complete class or function before answering.
 - If the first read_file result ends before the definition is complete, call read_file again for the remaining lines.
 - Describe only validation rules visible in the tool results.
+- Every final answer must include at least one evidence item.
+- Evidence must refer only to files and line ranges returned successfully by read_file.
+- Use repository-relative paths.
+- start_line and end_line must be positive integers, and start_line must not exceed end_line.
+- Cite the smallest line range that directly supports the answer.
 
 After gathering enough evidence, return:
-{"type":"final","answer":"A concise evidence-based diagnosis."}
+For a final answer, return exactly:
+{"type":"final","answer":"...","evidence":[{"path":"relative/file.py","start_line":1,"end_line":10}]}
 
 Never claim a tool ran until its tool result appears in the conversation. Use
 only paths and evidence returned by tools. If a tool fails, correct the request
@@ -70,6 +76,7 @@ class TrackerAgent:
             },
         ]
         successful_tools = set()
+        successful_reads = []
         for _ in range(self.max_steps):
             response = self.client.complete(messages)
             if self.trace is not None:
@@ -83,7 +90,44 @@ class TrackerAgent:
                 required_tools = {"search_code", "read_file"}
 
                 if required_tools.issubset(successful_tools):
-                    return model_response.answer
+                    unsupported_evidence = []
+
+                    for citation in model_response.evidence:
+                        citation_is_supported = any(
+                            citation.path == path
+                            and citation.start_line >= read_start
+                            and citation.end_line <= read_end
+                            for path, read_start, read_end in successful_reads
+                        )
+
+                        if not citation_is_supported:
+                            unsupported_evidence.append(citation)
+
+                    if model_response.evidence and not unsupported_evidence:
+                        return model_response.answer
+
+                    if self.trace is not None:
+                        self.trace(
+                            "REJECTED: Final answer contains missing or unsupported evidence."
+                        )
+
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": response,
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The final answer's evidence is missing or unsupported. "
+                                "Cite only repository paths and line ranges returned by "
+                                "successful read_file calls."
+                            ),
+                        }
+                    )
+                    continue
 
                 missing_tools = required_tools - successful_tools
                 missing_text = ", ".join(sorted(missing_tools))
@@ -113,6 +157,15 @@ class TrackerAgent:
 
             if result.ok:
                 successful_tools.add(model_response.name)
+
+                if model_response.name == "read_file":
+                    successful_reads.append(
+                        (
+                            model_response.arguments["relative_path"],
+                            model_response.arguments.get("start", 1),
+                            model_response.arguments.get("end", 200),
+                        )
+                    )
             messages.append(
                 {
                     "role": "assistant",

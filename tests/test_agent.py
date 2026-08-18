@@ -40,7 +40,9 @@ class TrackerAgentTests(unittest.TestCase):
                 '"arguments":{"relative_path":"src/auth.py",'
                 '"start":1,"end":2}}',
                 '{"type":"final","answer":'
-                '"Login is implemented in src/auth.py on line 1."}',
+                '"Login is implemented in src/auth.py on line 1.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":1}]}'
             ]
         )
         agent = TrackerAgent(client, self.dispatcher)
@@ -80,7 +82,9 @@ class TrackerAgentTests(unittest.TestCase):
         client = FakeModelClient([
             (
                 '{"type":"final",'
-                '"answer":"Login is in an invented file."}'
+                '"answer":"Login is in an invented file.",'
+                '"evidence":[{"path":"invented.py",'
+                '"start_line":1,"end_line":1}]}'
             ),
             (
                 '{"type":"tool_call","id":"call-1",'
@@ -95,7 +99,9 @@ class TrackerAgentTests(unittest.TestCase):
             ),
             (
                 '{"type":"final",'
-                '"answer":"Login is defined in src/auth.py."}'
+                '"answer":"Login is defined in src/auth.py.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":1}]}'
             ),
         ])
         agent = TrackerAgent(
@@ -119,6 +125,33 @@ class TrackerAgentTests(unittest.TestCase):
         )
         self.assertIn("search_code", second_request[-1]["content"])
         self.assertIn("read_file", second_request[-1]["content"])
+
+    def test_rejects_final_answer_with_unread_evidence(self):
+        client = FakeModelClient(
+            [
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
+                '"arguments":{"query":"login"}}',
+                '{"type":"tool_call","id":"call-2","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py",'
+                '"start":1,"end":2}}',
+                '{"type":"final","answer":"Login is elsewhere.",'
+                '"evidence":[{"path":"src/other.py",'
+                '"start_line":1,"end_line":2}]}',
+                '{"type":"final","answer":"Login is in src/auth.py.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":1}]}',
+            ]
+        )
+        agent = TrackerAgent(client, self.dispatcher, max_steps=4)
+
+        answer = agent.run("Where is login defined?")
+
+        self.assertEqual(answer, "Login is in src/auth.py.")
+        self.assertEqual(len(client.received_messages), 4)
+        self.assertIn(
+            "evidence",
+            client.received_messages[3][-1]["content"].lower(),
+        )
 
 
 if __name__ == "__main__":
