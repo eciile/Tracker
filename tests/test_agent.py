@@ -69,22 +69,39 @@ class TrackerAgentTests(unittest.TestCase):
         with self.assertRaisesRegex(AgentError, "maximum of 2 steps"):
             agent.run("Keep investigating forever")
 
-    def test_rejects_malformed_model_response(self):
+    def test_recovers_from_malformed_model_response(self):
         client = FakeModelClient(
-            ['{"type":"tool_call","id":"call-1"}\nExtra explanation']
+            [
+                '{"type":"tool_call","id":"bad"}\nExtra explanation',
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
+                '"arguments":{"query":"login"}}',
+                '{"type":"tool_call","id":"call-2","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py","start":1,"end":2}}',
+                '{"type":"final","answer":"Login is in src/auth.py.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":1}]}',
+            ]
         )
-        agent = TrackerAgent(client, self.dispatcher)
+        agent = TrackerAgent(client, self.dispatcher, max_steps=4)
 
-        with self.assertRaisesRegex(AgentError, "invalid response"):
-            agent.run("Investigate this issue")
+        answer = agent.run("Where is login defined?")
+
+        self.assertEqual(answer, "Login is in src/auth.py.")
+        self.assertEqual(len(client.received_messages), 4)
+
+        correction_request = client.received_messages[1]
+        self.assertEqual(correction_request[-1]["role"], "user")
+        self.assertIn(
+            "invalid response",
+            correction_request[-1]["content"].lower(),
+        )
 
     def test_rejects_final_answer_before_using_tool(self):
         client = FakeModelClient([
             (
                 '{"type":"final",'
                 '"answer":"Login is in an invented file.",'
-                '"evidence":[{"path":"invented.py",'
-                '"start_line":1,"end_line":1}]}'
+                '"evidence":[]}'
             ),
             (
                 '{"type":"tool_call","id":"call-1",'
@@ -132,8 +149,7 @@ class TrackerAgentTests(unittest.TestCase):
                 '{"type":"tool_call","id":"call-1","name":"search_code",'
                 '"arguments":{"query":"login"}}',
                 '{"type":"tool_call","id":"call-2","name":"read_file",'
-                '"arguments":{"relative_path":"src/auth.py",'
-                '"start":1,"end":2}}',
+                '"arguments":{"relative_path":"src/auth.py","start":1,"end":2}}',
                 '{"type":"final","answer":"Login is elsewhere.",'
                 '"evidence":[{"path":"src/other.py",'
                 '"start_line":1,"end_line":2}]}',
@@ -152,7 +168,6 @@ class TrackerAgentTests(unittest.TestCase):
             "evidence",
             client.received_messages[3][-1]["content"].lower(),
         )
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -84,7 +84,27 @@ class TrackerAgent:
             try:
                 model_response = parse_model_response(response)
             except ProtocolError as exc:
-                raise AgentError(f"Model returned an invalid response: {exc}") from exc
+                if self.trace is not None:
+                    self.trace(f"REJECTED: Invalid model response: {exc}")
+
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response,
+                    }
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your previous response was an invalid response: {exc} "
+                            "Return exactly one valid JSON object matching either the "
+                            "tool_call or final response schema. Do not include Markdown "
+                            "or additional text."
+                        ),
+                    }
+                )
+                continue
 
             if isinstance(model_response, FinalAnswer):
                 required_tools = {"search_code", "read_file"}
