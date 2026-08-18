@@ -1,5 +1,11 @@
 import unittest
-from tracker.protocol import ToolCall, ProtocolError, ToolResult
+from tracker.protocol import (
+    FinalAnswer,
+    ProtocolError,
+    ToolCall,
+    ToolResult,
+    parse_model_response,
+)
 import json
 
 class TestToolCall(unittest.TestCase):
@@ -64,3 +70,31 @@ class TestToolCall(unittest.TestCase):
         self.assertEqual(decoded["tool_call_id"], "call-3")
         self.assertTrue(decoded["ok"])
         self.assertIn("trouvé", payload)      
+
+
+class TestModelResponse(unittest.TestCase):
+    def test_parses_typed_tool_call(self):
+        response = parse_model_response(
+            '{"type":"tool_call","id":"call-1",'
+            '"name":"search_code","arguments":{"query":"ToolCall"}}'
+        )
+
+        self.assertIsInstance(response, ToolCall)
+        self.assertEqual(response.name, "search_code")
+
+    def test_parses_typed_final_answer(self):
+        response = parse_model_response(
+            '{"type":"final","answer":"Found in tracker/protocol.py."}'
+        )
+
+        self.assertIsInstance(response, FinalAnswer)
+        self.assertEqual(response.answer, "Found in tracker/protocol.py.")
+
+    def test_rejects_mixed_json_and_prose(self):
+        payload = (
+            '{"type":"tool_call","id":"call-1",'
+            '"name":"search_code","arguments":{}}\nExtra text'
+        )
+
+        with self.assertRaises(ProtocolError):
+            parse_model_response(payload)

@@ -43,6 +43,7 @@ class OllamaModelClientTests(unittest.TestCase):
         self.assertEqual(sent_body["model"], "qwen2.5-coder:3b-instruct")
         self.assertEqual(sent_body["messages"], messages)
         self.assertFalse(sent_body["stream"])
+        self.assertEqual(sent_body["format"], "json")
 
 
 if __name__ == "__main__":

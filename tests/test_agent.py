@@ -34,9 +34,10 @@ class TrackerAgentTests(unittest.TestCase):
     def test_runs_tool_call_then_returns_final_answer(self):
         client = FakeModelClient(
             [
-                '{"id":"call-1","name":"search_code",'
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
                 '"arguments":{"query":"login"}}',
-                "Login is implemented in src/auth.py on line 1.",
+                '{"type":"final","answer":'
+                '"Login is implemented in src/auth.py on line 1."}',
             ]
         )
         agent = TrackerAgent(client, self.dispatcher)
@@ -54,13 +55,23 @@ class TrackerAgentTests(unittest.TestCase):
 
     def test_stops_after_maximum_steps(self):
         repeated_call = (
-            '{"id":"call-1","name":"list_files","arguments":{}}'
+            '{"type":"tool_call","id":"call-1",'
+            '"name":"list_files","arguments":{}}'
         )
         client = FakeModelClient([repeated_call, repeated_call])
         agent = TrackerAgent(client, self.dispatcher, max_steps=2)
 
         with self.assertRaisesRegex(AgentError, "maximum of 2 steps"):
             agent.run("Keep investigating forever")
+
+    def test_rejects_malformed_model_response(self):
+        client = FakeModelClient(
+            ['{"type":"tool_call","id":"call-1"}\nExtra explanation']
+        )
+        agent = TrackerAgent(client, self.dispatcher)
+
+        with self.assertRaisesRegex(AgentError, "invalid response"):
+            agent.run("Investigate this issue")
 
 
 if __name__ == "__main__":

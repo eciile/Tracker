@@ -18,6 +18,7 @@ class OllamaModelClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "format": "json",
         }
         body_encoded = json.dumps(body).encode("utf-8")
 

@@ -2,7 +2,7 @@
 
 from .dispatcher import ToolDispatcher
 from .model import ModelClient
-from .protocol import ProtocolError, ToolCall
+from .protocol import FinalAnswer, ProtocolError, parse_model_response
 
 
 SYSTEM_PROMPT = """You are Tracker, a repository investigation agent.
@@ -14,11 +14,17 @@ Available tools:
 - read_file(relative_path, start=1, end=200)
 - search_code(query, limit=50)
 
-To request a tool, reply with only a JSON object:
-{"id":"unique-id","name":"tool_name","arguments":{}}
+Every response must be exactly one JSON object with no Markdown or extra text.
 
-After gathering enough evidence, reply with a concise final diagnosis in plain
-text. Do not wrap the final diagnosis in JSON.
+To request a tool:
+{"type":"tool_call","id":"unique-id","name":"tool_name","arguments":{}}
+
+After gathering enough evidence, return:
+{"type":"final","answer":"A concise evidence-based diagnosis."}
+
+Never claim a tool ran until its tool result appears in the conversation. Use
+only paths and evidence returned by tools. If a tool fails, correct the request
+or explain the limitation in the final answer.
 """
 
 
@@ -52,11 +58,14 @@ class TrackerAgent:
         for _ in range(self.max_steps):
             response = self.client.complete(messages)
             try:
-                call = ToolCall.from_json(response)
-            except ProtocolError:
-                return response
+                model_response = parse_model_response(response)
+            except ProtocolError as exc:
+                raise AgentError(f"Model returned an invalid response: {exc}") from exc
 
-            result = self.dispatcher.execute_result(call)
+            if isinstance(model_response, FinalAnswer):
+                return model_response.answer
+
+            result = self.dispatcher.execute_result(model_response)
             messages.append(
                 {
                     "role": "assistant",
@@ -71,4 +80,3 @@ class TrackerAgent:
             )
 
         raise AgentError(f"Agent exceeded the maximum of {self.max_steps} steps")
-
