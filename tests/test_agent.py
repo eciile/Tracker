@@ -169,5 +169,62 @@ class TrackerAgentTests(unittest.TestCase):
             client.received_messages[3][-1]["content"].lower(),
         )
 
+    def test_rejects_read_that_stops_at_block_opener(self):
+        client = FakeModelClient(
+            [
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
+                '"arguments":{"query":"login"}}',
+                '{"type":"tool_call","id":"call-2","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py","start":1,"end":1}}',
+                '{"type":"final","answer":"Login is defined here.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":1}]}',
+                '{"type":"tool_call","id":"call-3","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py","start":1,"end":2}}',
+                '{"type":"final","answer":"Login returns True.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":2}]}',
+            ]
+        )
+        agent = TrackerAgent(client, self.dispatcher, max_steps=5)
+
+        answer = agent.run("Explain what login does.")
+
+        self.assertEqual(answer, "Login returns True.")
+        self.assertEqual(len(client.received_messages), 5)
+
+    def test_gives_correction_after_failed_tool_call(self):
+        client = FakeModelClient(
+            [
+                '{"type":"tool_call","id":"call-1","name":"search_code",'
+                '"arguments":{"query":"login"}}',
+                '{"type":"tool_call","id":"call-2","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py",'
+                '"start_line":1,"end_line":2}}',
+                '{"type":"tool_call","id":"call-3","name":"read_file",'
+                '"arguments":{"relative_path":"src/auth.py",'
+                '"start":1,"end":2}}',
+                '{"type":"final","answer":"Login returns True.",'
+                '"evidence":[{"path":"src/auth.py",'
+                '"start_line":1,"end_line":2}]}',
+            ]
+        )
+        agent = TrackerAgent(client, self.dispatcher, max_steps=4)
+
+        answer = agent.run("Explain what login does.")
+
+        self.assertEqual(answer, "Login returns True.")
+
+        correction_request = client.received_messages[2]
+        self.assertEqual(correction_request[-1]["role"], "user")
+        self.assertIn(
+            "tool call failed",
+            correction_request[-1]["content"].lower(),
+        )
+        self.assertIn(
+            "start and end",
+            correction_request[-1]["content"].lower(),
+        )
+
 if __name__ == "__main__":
     unittest.main()

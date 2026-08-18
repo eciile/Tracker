@@ -176,16 +176,38 @@ class TrackerAgent:
                 self.trace(f"TOOL: {result.to_json()}")
 
             if result.ok:
-                successful_tools.add(model_response.name)
+                read_is_complete = True
 
                 if model_response.name == "read_file":
-                    successful_reads.append(
-                        (
-                            model_response.arguments["relative_path"],
-                            model_response.arguments.get("start", 1),
-                            model_response.arguments.get("end", 200),
+                    output_lines = [
+                        line
+                        for line in result.output.splitlines()
+                        if line.strip()
+                    ]
+
+                    if output_lines:
+                        last_line = output_lines[-1]
+                        code_text = last_line.split(": ", 1)[-1]
+
+                        if code_text.rstrip().endswith(":"):
+                            read_is_complete = False
+
+                            if self.trace is not None:
+                                self.trace(
+                                    "REJECTED: read_file stopped at a block opener."
+                                )
+
+                if read_is_complete:
+                    successful_tools.add(model_response.name)
+
+                    if model_response.name == "read_file":
+                        successful_reads.append(
+                            (
+                                model_response.arguments["relative_path"],
+                                model_response.arguments.get("start", 1),
+                                model_response.arguments.get("end", 200),
+                            )
                         )
-                    )
             messages.append(
                 {
                     "role": "assistant",
@@ -198,5 +220,24 @@ class TrackerAgent:
                     "content": result.to_json(),
                 }
             )
+            if not result.ok:
+                correction = (
+                    f"The tool call failed: {result.error} "
+                    "Do not repeat the same failed call. Correct the arguments "
+                    "and use a new tool-call ID."
+                )
+
+                if model_response.name == "read_file":
+                    correction += (
+                        " For read_file, use start and end, not start_line "
+                        "and end_line."
+                    )
+
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": correction,
+                    }
+                )
 
         raise AgentError(f"Agent exceeded the maximum of {self.max_steps} steps")
